@@ -99,6 +99,9 @@ select.chip{appearance:none;-webkit-appearance:none;padding-right:28px;backgroun
 .row .ti{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row .sub{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .row .amt{font-weight:600;white-space:nowrap}
+.total{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:12px;font-weight:600}
+.total small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.total .num{font-size:20px}
 .count{font-size:13px;color:var(--muted);margin-top:24px;text-align:center}
 
 /* categories */
@@ -249,7 +252,7 @@ function totals(y,m){const p=y+"-"+pad(m);let inc=0,exp=0;for(const t of S.tx){i
 /* ---------- UI state ---------- */
 let cur=(()=>{const d=new Date();return{y:d.getFullYear(),m:d.getMonth()+1}})();
 let view="sum";
-const H={q:"",type:"all",cat:"all"};
+const H={q:"",type:"all",cat:"all",y:String(new Date().getFullYear()),m:pad(new Date().getMonth()+1)};
 
 function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove("show"),2400)}
 function setView(v){view=v;document.querySelectorAll(".view").forEach(s=>s.classList.toggle("active",s.id==="v-"+v));document.querySelectorAll(".tab").forEach(x=>x.dataset.v===v?x.setAttribute("aria-current","page"):x.removeAttribute("aria-current"));render();window.scrollTo(0,0)}
@@ -313,11 +316,19 @@ function renderHis(){
   if(!sec.dataset.built){
     sec.innerHTML=`<h1 style="font-size:22px;font-weight:600;margin-bottom:8px">ประวัติรายการ</h1>
     <input class="search" id="hq" type="search" placeholder="ค้นหารายละเอียด หมวดหมู่ หรือจำนวนเงิน" autocomplete="off">
-    <div class="filters" id="hf"></div><div id="hl"></div>`;
+    <div class="filters" id="hp"></div><div class="filters" id="hf"></div><div id="hl"></div>`;
     sec.dataset.built=1;
     $("#hq").oninput=e=>{H.q=e.target.value;renderList()};
   }
-  renderFilters();renderList();
+  renderPeriod();renderFilters();renderList();
+}
+function renderPeriod(){
+  const ys=new Set(S.tx.map(t=>t.date.slice(0,4)));ys.add(String(new Date().getFullYear()));if(H.y!=="all")ys.add(H.y);
+  const years=[...ys].sort((a,b)=>b-a);
+  $("#hp").innerHTML=`<select class="chip" id="hm" aria-label="กรองเดือน"><option value="all">ทุกเดือน</option>${TH_M.map((n,i)=>`<option value="${pad(i+1)}"${H.m===pad(i+1)?" selected":""}>${n}</option>`).join("")}</select>`+
+   `<select class="chip" id="hy" aria-label="กรองปี"><option value="all">ทุกปี</option>${years.map(y=>`<option value="${y}"${H.y===y?" selected":""}>${+y+543}</option>`).join("")}</select>`;
+  $("#hm").onchange=e=>{H.m=e.target.value;renderList()};
+  $("#hy").onchange=e=>{H.y=e.target.value;renderList()};
 }
 function renderFilters(){
   const cats=H.type==="all"?S.cats:catsOf(H.type);
@@ -332,12 +343,16 @@ function renderList(){
   const list=S.tx.filter(t=>{
     if(H.type!=="all"&&t.type!==H.type)return false;
     if(H.cat!=="all"&&t.catId!==H.cat)return false;
+    if(H.y!=="all"&&t.date.slice(0,4)!==H.y)return false;
+    if(H.m!=="all"&&t.date.slice(5,7)!==H.m)return false;
     if(q){const c=catById(t.catId);const hay=((t.note||"")+" "+(c?c.name:"")+" "+t.amount+" "+money(t.amount)).toLowerCase();if(!hay.includes(q))return false}
     return true}).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));
   const el=$("#hl");
   if(!S.tx.length){el.innerHTML=`<div class="empty" style="margin-top:20px">ยังไม่มีรายการ เริ่มจาก <button id="hAdd">เพิ่มรายการแรก</button></div>`;$("#hAdd").onclick=()=>openForm();return}
-  if(!list.length){el.innerHTML=`<div class="empty" style="margin-top:20px">ไม่พบรายการที่ตรงกับตัวกรอง</div>`;return}
+  if(!list.length){el.innerHTML=`<div class="empty" style="margin-top:20px">${H.m!=="all"||H.y!=="all"?"ไม่มีรายการในช่วงเวลานี้":"ไม่พบรายการที่ตรงกับตัวกรอง"}</div>`;return}
   let h="",last="";const day={};
+  if(H.type!=="all"){const sum=list.reduce((n,t)=>n+t.amount,0);const inc=H.type==="income";
+    h+=`<div class="total"><span>รวม${inc?"รายรับ":"รายจ่าย"}<small>${list.length} รายการ</small></span><span class="num ${inc?"inc":"exp"}">${inc?"+":"−"}฿${money(sum)}</span></div>`}
   list.forEach(t=>{day[t.date]=(day[t.date]||0)+(t.type==="income"?t.amount:-t.amount)});
   list.forEach(t=>{
     if(t.date!==last){last=t.date;const n=day[t.date];h+=`<div class="day"><span>${fmtDate(t.date)}</span><span class="num">${n<0?"−":"+"}฿${money(Math.abs(n))}</span></div>`}
